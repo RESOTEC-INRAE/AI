@@ -4,20 +4,31 @@ sf::sf_use_s2(FALSE)
 library(rnaturalearth)
 library(scales)
 
-
 # Create a directory where to save generated figures and tables
 if(!dir.exists("paper/figures")) dir.create("paper/figures")
 
 # Load images
 tab <- read.csv("data/images.csv")
 
+# Sites name
+sites_name <- c("Carpathians", 
+                "Danube",
+                "Dovre",
+                "French Alps", 
+                "Sierra Nevada",
+                "Stubai Valley",
+                "Vinschgau")
+
 # List sites
-sites <- list.files(path = "data/boundaries")
+sites <- list.files(path = "data/gis")
+sites <- sites[sites != "environmental"]
 sites <- substr(sites, 1, nchar(sites)-5)
 n <- length(sites)
 
 # Reorder sites
-sites <- sites[c(1,4,6,7,2,3,5)]
+order_sites <- c(1,4,6,7,2,3,5)
+sites <- sites[order_sites]
+sites_name <- sites_name[order_sites]
 
 # Load sites boundaries
 bound <- list()
@@ -25,12 +36,16 @@ grid <- list()
 for(k in 1:n){
 
   # Boundaries
-  bound[[k]] <- st_read(paste0("data/boundaries/", sites[k], ".gpkg"), 
-               layer = "boundaries", quiet = TRUE)
+  bound[[k]] <- st_read(paste0("data/gis/", sites[k], ".gpkg"), 
+                        layer = "boundaries", quiet = TRUE)
+  
+  # Grid
+  grid[[k]] <- st_read(paste0("data/gis/", sites[k], ".gpkg"), 
+                       layer = "grid2000", quiet = TRUE)
   
 }
 
-# Map Europe [Figure 1]
+# Map Europe [Figure 1 - Fig_main_map]
 pdf("paper/figures/Fig_main_map.pdf", width = 4.5, height = 5.9, useDingbats = FALSE)
 
   colo <- c("#5F9DFB","#5F9DFB", "#5F9DFB", "#5F9DFB",
@@ -54,7 +69,7 @@ pdf("paper/figures/Fig_main_map.pdf", width = 4.5, height = 5.9, useDingbats = F
          add = TRUE)
     
     cent <- st_coordinates(cent)
-    text(cent, labels = gsub("_", " ", sites[k]),
+    text(cent, labels = sites_name[k],
          pos = poso[k],
          cex = 1, font = 2)
   }
@@ -65,7 +80,7 @@ pdf("paper/figures/Fig_main_map.pdf", width = 4.5, height = 5.9, useDingbats = F
 
 dev.off()
 
-# Maps sites [Figure S1]
+# Maps sites [Figure S1 - Fig_supp_sites]
 pdf("paper/figures/Fig_supp_sites.pdf", width = 13.2, height = 6.6, useDingbats = FALSE)
 
   colo <- c("#5F9DFB","#5F9DFB", "#5F9DFB", "#5F9DFB",
@@ -80,18 +95,16 @@ pdf("paper/figures/Fig_supp_sites.pdf", width = 13.2, height = 6.6, useDingbats 
   
   for(k in 1:n){
     
-    tabk <- tab[tab$site == tolower(sites[k]),]
-    points <- st_as_sf(tabk, coords = c("longitude", "latitude"), crs = 4326)
-    points <- st_transform(points, 3035)
+    tabk <- tab[tab$site == sites[k],]
     
     par(mar = c(2, 0, 3, 0))
-    plot(st_geometry(st_transform(bound[[k]], 3035)), 
+    plot(st_geometry(st_transform(grid[[k]], 3035)), 
          col = NA, border = "darkgrey", lwd = 2)
-    plot(st_geometry(points), col = alpha(colo[k], 0.5), pch = 16, cex = 1, add = TRUE)
-    title(main = paste0("(", panel[k], ") ", gsub("_", " ", sites[k]), " [", 
+    plot(st_geometry(st_transform(bound[[k]], 3035)), 
+         col = NA, border = colo[k], lwd = 2, add = TRUE)
+    title(main = paste0("(", panel[k], ") ", sites_name[k], " [", 
                         surf[k], " km²]"), 
                         cex.main = 1.7)
-    
     
   }
 

@@ -8,10 +8,25 @@ library(tidyr)
 library(cowplot)
 sf::sf_use_s2(FALSE)
 
+# Sites name
+sites_name <- c("Carpathians", 
+                "Danube",
+                "Dovre",
+                "French Alps", 
+                "Sierra Nevada",
+                "Stubai Valley",
+                "Vinschgau")
+
 # List sites
-sites <- list.files(path = "data/boundaries")
+sites <- list.files(path = "data/gis")
+sites <- sites[sites != "environmental"]
 sites <- substr(sites, 1, nchar(sites)-5)
 n <- length(sites)
+
+# Reorder sites
+order_sites <- c(1,4,6,7,2,3,5)
+sites <- sites[order_sites]
+sites_name <- sites_name[order_sites]
 
 # Load metadata on images
 data_images <- read.csv("data/images.csv")
@@ -45,32 +60,24 @@ for(i in 1:length(sites)){
   colnames(data.predict.in) = gsub("ŷ", "u", colnames(data.predict.in))
   
   # Metadata for this site
-  # - Read file
-  data_images.in = subset(data_images, site == tolower(site.in))
-  # - Convert to sf
-  data_images.in_sf = data_images.in %>%
-    st_as_sf(coords = c("longitude", "latitude"), crs = 4326, agr = "constant")
+  data_images.in = subset(data_images, site == site.in)
   
   # Loop on all grids
   for(j in 1:length(grid_vec)){
     
     # Read grid for this site
-    grid.in = st_read(paste0("data/boundaries/", site.in, ".gpkg"), 
+    grid.in = st_read(paste0("data/gis/", site.in, ".gpkg"), 
                       layer = grid_vec[j], quiet = TRUE)
     
     # Final formatting of the image data
-    pred.per.cell = data_images.in_sf %>%
-      # Assign each image to a cell of the grid
-      st_join(grid.in["idcell"]) %>%
-      # Remove geometry
-      st_drop_geometry() %>%
+    pred.per.cell = data_images.in %>%
       # Add an ID for each interaction
-      mutate(id_interaction = paste(owner, substr(date, 1, 10), idcell, sep = "_")) %>%
+      mutate(id_interaction = paste(owner_date, .data[[grid_vec[j]]], sep = "_")) %>%
       # Add information on prediction
       left_join(data.predict.in %>% mutate(site = tolower(site)), 
                 by = c("image", "site")) %>%
       # Group predictions by interaction
-      group_by(idcell, id_interaction) %>%
+      group_by(.data[[grid_vec[j]]], id_interaction) %>%
       summarize(u_human = ifelse(any(u_human), 1, 0), 
                 y_human = ifelse(any(y_human), 1, 0), 
                 u_anthropic = ifelse(any(u_anthropic), 1, 0), 
@@ -89,7 +96,7 @@ for(i in 1:length(sites)){
       mutate(type = ifelse(type == "y", "observed", "predicted")) %>%
       pivot_wider(names_from = "type", values_from = "value") %>%
       # Sum by cell
-      group_by(idcell, category) %>%
+      group_by(.data[[grid_vec[j]]], category) %>%
       summarise(predicted = sum(predicted, na.rm = TRUE), 
                 observed = sum(observed, na.rm = TRUE))
     
@@ -97,17 +104,16 @@ for(i in 1:length(sites)){
     mod = lm(predicted ~ observed*category, data = pred.per.cell)
     
     # Calculate goodness of fit
-    rsquare = 1 - sum((pred.per.cell$observed - pred.per.cell$predicted)^2) / 
-      sum((pred.per.cell$observed - mean(pred.per.cell$predicted))^2)
-    rmse  = sqrt(mean((pred.per.cell$observed - pred.per.cell$predicted)^2))
-    mae = mean(abs(pred.per.cell$observed - pred.per.cell$predicted))
-    
+    rsquare = 1 -
+      sum((pred.per.cell$observed - pred.per.cell$predicted)^2) /
+      sum((pred.per.cell$observed - mean(pred.per.cell$observed))^2)
+    pgp = 2*sum(pmin(pred.per.cell$observed, pred.per.cell$predicted)) /
+      (sum(pred.per.cell$observed) + sum(pred.per.cell$predicted))
+ 
     # Fill the stat table
     table.stat.grid = rbind(table.stat.grid, data.frame(
       site = site.in, grid = grid_vec[j], ncells = dim(grid.in)[1], 
-      rsquare = rsquare, rmse = rmse, mae = mae))
-    
-    
+      rsquare = rsquare, pgp = pgp))
     
     # Only make the plot if it is the chosen grid
     if(grid_vec[j] == "grid2000"){
@@ -140,7 +146,7 @@ for(i in 1:length(sites)){
         geom_text(data = data.frame(observed = 0.08*max.val.ij,
                                     predicted = 0.95*max.val.ij, category = NA),
                   label = paste0("R2 = ", round(rsquare, digits = 2),
-                                 "\nRMSE = ", round(rmse, digits = 2)),
+                                 "\nPGP = ", round(pgp, digits = 2)),
                   size = 5, color = "black", hjust = 0, vjust = 0.9) +
         ggtitle(gsub("\\_", "\\ ", site.in))
       
@@ -155,7 +161,7 @@ for(i in 1:length(sites)){
                      mutate(cat_predict = paste0(category, "_", prediction)) %>%
                      select(-category, -prediction) %>%
                      pivot_wider(names_from = "cat_predict", values_from = "value")), 
-                  by = "idcell") %>% 
+                  by = setNames(grid_vec[j], "idcell")) %>% 
         pivot_longer(names_to = "cat_predict", values_to = "value", cols = all_of(
           colnames(.)[2:(dim(.)[2]-1)])) %>%
         mutate(Interactions = ifelse(is.na(value), 0, value)) %>%
@@ -183,30 +189,37 @@ for(i in 1:length(sites)){
   
 }
 
-# Build final plot
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Figure on predictions per site [Figure 4 - Fig_main_mapfeatures]
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 # - Extract legend for the main plot
 plot.in_legend = cowplot::get_legend(plot.in)
 # - Divide into val / train / test and external
-plotlist_train = plotlist.out[c("Carpathians", "French_Alps", "Stubai_Valley", "Vinschgau")]
-plotlist_external = plotlist.out[c("Danube", "Dovre", "Sierra_Nevada")]
+plotlist_train = plotlist.out[c("carpathians", "french_alps", "stubai_valley", "vinschgau")]
+plotlist_external = plotlist.out[c("danube", "dovre", "sierra_nevada")]
 # - Add legend
 plotlist_external$legend = plot.in_legend
 # - Assemble plots
 plot.out = plot_grid(
   plot_grid(plotlist = plotlist_train, nrow = 1, align = "hv", scale = 0.9), 
   plot_grid(plotlist = plotlist_external, nrow = 1, align = "hv", scale = 0.9), 
-  maplist.out[["Stubai_Valley"]], rel_heights = c(1, 1, 1.5),
+  maplist.out[["stubai_valley"]], rel_heights = c(1, 1, 1.5),
   ncol = 1, scale = 0.95, labels = c("(a)", "(b)", "(c)"), label_size = 20
 )
 # - Save plots
 ggsave("paper/figures/Fig_main_mapfeatures.pdf", plot.out, width = 38, 
        height = 33, units = "cm", bg = "white")
 
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Figure on stats per grid [Figure S7 - Fig_supp_statmapfeatures]
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 # Build plot of statistics per grid
 plot.stat.grid = table.stat.grid %>%
   mutate(grid = as.numeric(gsub("grid", "", grid))) %>%
   pivot_longer(names_to = "metric", values_to = "value", 
-               cols = all_of(c("rsquare", "rmse", "mae"))) %>%
+               cols = all_of(c("rsquare", "pgp"))) %>%
   mutate(metric = toupper(metric)) %>%
   ggplot(aes(x = grid, y = value, color = site)) + 
   geom_line() + 

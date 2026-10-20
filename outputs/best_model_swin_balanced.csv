@@ -1,0 +1,2 @@
+experiment,best_model_id,rep,f1-score
+swin_balanced,b9b9f84970ed46dcbd4ff1df7dc262b5,13,0.905689715538025

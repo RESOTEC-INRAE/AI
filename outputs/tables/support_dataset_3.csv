@@ -1,0 +1,8 @@
+,train_full,train_balanced,train_control,val
+carpathians,384,143,210,85
+french_alps,725,363,378,163
+stubai_valley,544,399,287,109
+vinschgau,392,186,216,92
+danube,0,0,0,0
+dovre,0,0,0,0
+sierra_nevada,0,0,0,0

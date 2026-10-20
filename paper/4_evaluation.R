@@ -6,19 +6,33 @@ library(tidyr)
 library(ggplot2)
 library(cowplot) 
 
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# - Read data ----
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Read data 
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-# Fetch results data with both full dataset and balanced one
-results_balanced = fread("outputs/swin_balanced_results.csv")
-results_full = fread("outputs/swin_full_results.csv")
-results = rbind(mutate(results_balanced, dataset = "balanced"), 
-                mutate(results_full, dataset = "full"))
+# Fetch results data
+results_full = fread("outputs/results_swin_full.csv")
+results_balanced = fread("outputs/results_swin_balanced.csv")
+results_control = fread("outputs/results_swin_control.csv")
+results = rbind(mutate(results_full, dataset = "full"),
+                mutate(results_balanced, dataset = "balanced"), 
+                mutate(results_control, dataset = "control"))
 
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# - Figure on the random seed effect ----
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Check
+resultsorder <- data.frame(results[results$labels == "weighted avg",])
+resultsorder <- resultsorder[order(resultsorder$f1, decreasing = TRUE),]
+resultsorder[1:10,]
+
+mean(resultsorder[,6])
+
+aggregate(resultsorder[,6], list(resultsorder[,2]), mean)
+
+aggregate(resultsorder[,6], list(resultsorder[,8]), mean)
+aggregate(resultsorder[,6], list(resultsorder[,8]), max)
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Figure on the random seed effect [Figure S3 - Fig_supp_seed]
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 # Make plot
 plot.seed = results %>%
@@ -45,19 +59,28 @@ plot.seed = results %>%
 ggsave("paper/figures/Fig_supp_seed.pdf", plot.seed, width = 25, 
        height = 8, units = "cm", dpi = 600, bg = "white")
 
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# - Figure on val and test results ----
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Figure on val/test/external results [Figure 3 - Fig_main_results]
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 # Classification report
 classif_testexternal <- bind_rows(
-  test_full = fread("outputs/test/test_classification_report_full.csv"),
-  test_balanced = fread("outputs/test/test_classification_report_balanced.csv"),
-  external_full = fread("outputs/external/external_classification_report_full.csv"),
-  external_balanced = fread("outputs/external/external_classification_report_balanced.csv"),
+  test_full = fread("outputs/test/classification_report_full.csv"),
+  test_balanced = fread("outputs/test/classification_report_balanced.csv"),
+  test_control = fread("outputs/test/classification_report_control.csv"),
+  external_full = fread("outputs/external/classification_report_full.csv"),
+  external_balanced = fread("outputs/external/classification_report_balanced.csv"),
+  external_control = fread("outputs/external/classification_report_control.csv"),
   .id = "source") %>%
   separate(source, into = c("metric", "dataset"), sep = "_")
 
+# Check
+classiforder <- data.frame(classif_testexternal[classif_testexternal$labels == "weighted avg",])
+classiforder <- classiforder[order(classiforder$f1, decreasing = TRUE),]
+classiforder
+
+classif_testexternal[classif_testexternal$metric == "test" & 
+                     classif_testexternal$dataset == "full", ]
 
 # 1. Identify the best run for each dataset modality based on weighted avg f1-score
 best_runs <- results %>%
@@ -170,17 +193,29 @@ plot.results = plot_grid(plot.validation, plot.test, plot.external, ncol = 1,
 ggsave("paper/figures/Fig_main_results.pdf", plot.results, width = 22, 
        height = 20, units = "cm", dpi = 600, bg = "white")
 
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Figure on site by site results [Figure S5 - Fig_supp_performance_sites]
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+# Sites name
+sites_name <- c("Carpathians", 
+                "Danube",
+                "Dovre",
+                "French Alps", 
+                "Sierra Nevada",
+                "Stubai Valley",
+                "Vinschgau")
 
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# - Figure on site by site results ----
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-# Site data
-sites <- list.files(path = "data/boundaries")
+# List sites
+sites <- list.files(path = "data/gis")
+sites <- sites[sites != "environmental"]
 sites <- substr(sites, 1, nchar(sites)-5)
 n <- length(sites)
-sites <- sites[c(1,4,6,7,2,3,5)]
+
+# Reorder sites
+order_sites <- c(1,4,6,7,2,3,5)
+sites <- sites[order_sites]
+sites_name <- sites_name[order_sites]
 
 # Initialize output list
 list_sites = vector(mode = "list", length = n)
@@ -227,11 +262,9 @@ plot_sites = data_sites %>%
 ggsave("paper/figures/Fig_supp_performance_sites.pdf", plot_sites, 
        width = 28, height = 8, units = "cm", dpi = 600, bg = "white")
 
-
-
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# - Table of support per study site ----
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Table of support per study site [Table S2]
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 support = data_sites %>% 
   filter(labels %in% c("human", "rock", "vegetation", "anthropic", "snow")) %>% 
@@ -249,9 +282,9 @@ tex=paste0(support[,1], " & ",
            support[,8], " \\")
 print(data.frame(tex), row.names = FALSE)
 
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# - Figure of relation between support and precision ----
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%$
+# Relation between support and precision [Figure S6 - Fig_supp_support]
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%$
 
 # Make plot
 plot_support = data_sites %>%

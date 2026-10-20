@@ -8,34 +8,45 @@ library(xtable)
 library(stringr)
 sf::sf_use_s2(FALSE)
 
-# Names of the tables to compile
-names = c("full", "balanced")
-
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# - Table of site characteristics ----
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Table of site characteristics [Table 1 - tab_main_sites]
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 # Raster of land cover
-rast_landcover = terra::rast("data/landcover/U2018_CLC2018_V2020_20u1.tif")
+rast_landcover = terra::rast("data/gis/environmental/U2018_CLC2018_V2020_20u1.tif")
 
 # Raster of precipitation
-rast_prec = terra::rast("data/climate/CHELSA_bio12_1981-2010_V.2.1.tif")
+rast_prec = terra::rast("data/gis/environmental/CHELSA_bio12_1981-2010_V.2.1.tif")
 
 # Raster of mean annual temperature
-rast_temp = terra::rast("data/climate/CHELSA_bio01_1981-2010_V.2.1.tif")
+rast_temp = terra::rast("data/gis/environmental/CHELSA_bio01_1981-2010_V.2.1.tif")
+
+# Sites name
+sites_name <- c("Carpathians", 
+                "Danube",
+                "Dovre",
+                "French Alps", 
+                "Sierra Nevada",
+                "Stubai Valley",
+                "Vinschgau")
 
 # List sites
-sites <- list.files(path = "data/boundaries")
+sites <- list.files(path = "data/gis")
+sites <- sites[sites != "environmental"]
 sites <- substr(sites, 1, nchar(sites)-5)
 n <- length(sites)
-sites <- sites[c(1,4,6,7,2,3,5)]
+
+# Reorder sites
+order_sites <- c(1,4,6,7,2,3,5)
+sites <- sites[order_sites]
+sites_name <- sites_name[order_sites]
 
 # Loop on all sites
 for(i in 1:length(sites)){
   
   # Extract boundaries of the site
   boundaries.site.in = terra::vect(
-    paste0("data/boundaries/", sites[i], ".gpkg"), layer = "boundaries")
+    paste0("data/gis/", sites[i], ".gpkg"), layer = "boundaries")
   
   # Extract elevation data for this site
   # - Get raster
@@ -51,8 +62,8 @@ for(i in 1:length(sites)){
                         max = max(x, na.rm = TRUE)))
   # Extract land cover for the site
   land.cover.i = extract(rast_landcover, boundaries.site.in, fun = table) %>%
-    # pivot_longer(cols = colnames(.)[2:dim(.)[2]], names_to = "landcover_cat", 
-    #              values_to = "landcover_npixel")  %>%
+    #pivot_longer(cols = colnames(.)[2:dim(.)[2]], names_to = "landcover_cat", 
+    #             values_to = "landcover_npixel")  %>%
     rename(landcover_cat = LABEL3) %>%
     mutate(
       synthesized_class = case_when(
@@ -164,7 +175,6 @@ for(i in 1:length(sites)){
     land.cover = rbind(land.cover, land.cover.i)
   } 
   
-  
 }
 
 # Final formatting
@@ -181,162 +191,75 @@ out = land.cover  %>%
                          TRUE ~ col)) %>%
   pivot_wider(names_from = "site", values_from = "val") %>%
   rename(" " = "col")
-colnames(out) = c("", sites)
+colnames(out) = c("", sites_name)
 
 # Make latex table
 dir.create("paper/tables")
-print(xtable(out, type = "latex", label = "tablesites",
+print(xtable(out, type = "latex", label = "table_sites",
              caption = paste0("Environmental conditions (mean annual temperature", 
                               ", annual rainfall and mean elevation) and percentage", 
                               " of land cover of the seven study sites")), 
-      include.rownames=FALSE, include.colnames = TRUE, size = "\\small",
-      hline.after = c(0, 3, dim(out)[1]), caption.placement = "top", align = "c",
-      file = "paper/tables/tablesites.tex")
+      include.rownames = FALSE, include.colnames = TRUE, size = "\\small",
+      hline.after = c(0, 3, dim(out)[1]), caption.placement = "top", 
+      align = c("c","c","c","c","c|","c","c","c"),
+      file = "paper/tables/table_sites.tex")
 
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# - Table of support per site ----
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Table of support per site [Table 2 - tab_main_support_site]
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+# Import table [seed 14 as example]
+support <- read.csv("outputs/tables/support_dataset_14.csv")
+support_test <- read.csv(paste0("outputs/test/prediction_revue_balanced.csv"))
+support_ext <- read.csv(paste0("outputs/external/prediction_revue_balanced.csv"))
 
-# read data 
-assignments = fread("outputs/dataset_assignments.csv") %>%
-  mutate(dataset = str_to_title(dataset))
-images = fread("data/images.csv") %>% 
-  select(image, site) %>%
-  mutate(site = str_to_title(gsub("\\_", "\\ ", site)))
+# Loop over site for test and external
+test <- rep(0,n)
+ext <- rep(0,n)
+for(k in 1:n){
+  if(k <= 4){
+    test[k] <- sum(support_test$site == sites[k])
+  }else{
+    ext[k] <- sum(support_ext$site == sites[k])
+  }
+}
+support$test <- test
+support$external <- ext
+support <- rbind(support, c("Total", apply(support[,-1],2,sum)))
+support[1:7,1] <- sites_name
 
-# List sites
-sites = gsub("\\..+", "", gsub("\\_", "\\ ", list.files(path = "data/boundaries")))
-n <- length(sites)
-sites <- sites[c(1,4,6,7,2,3,5)]
-
-
-# Format  with full configuration
-data_full = assignments %>%
-  select(-in_balanced) %>%
-  left_join(images, by = "image") %>%
-  group_by(dataset, site) %>%
-  summarize(n = n()) %>%
-  pivot_wider(names_from = "dataset", values_from = "n") %>%
-  replace(is.na(.), 0) %>%
-  mutate(Total = Training + Test + Validation + External) %>%
-  select(Site = site, Training, Validation, Test, External, Total) %>%
-  rbind(data.frame(
-    Site = "Total", Training = sum(.$Training), Validation = sum(.$Validation), 
-    Test = sum(.$Test), External = sum(.$External), Total = sum(.$Total)))
-
-# Get training support with balanced configuration
-data_balanced = assignments %>%
-  filter(in_balanced) %>%
-  select(-in_balanced) %>%
-  left_join(images, by = "image") %>%
-  group_by(site) %>%
-  summarise(n = n()) %>%
-  rbind(data.frame(site = "Total", n = sum(.$n))) %>%
-  rename(Site = site)
-
-# Assemble in one table
-table.out = data_full %>%
-  left_join(data_balanced, by = "Site") %>%
-  mutate(Training = ifelse(
-    is.na(n), Training, paste0(Training, " [", n, "]")), 
-    Total = ifelse(is.na(n), paste0(Total, " [", Total, "]"), 
-                   paste0(Total, " [", Validation + Test + External + n, "]"))) %>%
-  select(-n) %>%
-  as.data.frame()
-
-# print with tex format
-tex=paste0("\textbf{", table.out$Site, "}", " & ",
-           table.out$Train, " & ",
-           table.out$Validation, " & ",
-           table.out$Test, " & ",
-           table.out$External, " & ",
-           table.out$Total, " \\")
+# Print in tex format
+tex=paste0("\textbf{", support[,1], "}", " & ",
+           support[,2], " & ",
+           support[,3], " & ",
+           support[,4], " & ",
+           support[,5], " & ",
+           support[,6], " & ",
+           support[,7], " \\")
 print(data.frame(tex), row.names = FALSE)
 
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Table of support per label [Table 3 - tab_main_support_label]
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# - Table of support per label ----
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Import table [seed 14 as example]
+support <- read.csv("outputs/tables/support_label_14.csv")
+support_test <- read.csv(paste0("outputs/test/classification_report_balanced.csv"))
+support_ext <- read.csv(paste0("outputs/external/classification_report_balanced.csv"))
 
-# read data 
-assignments = fread("outputs/dataset_assignments.csv") %>%
-  mutate(dataset = str_to_title(dataset))
-annotations = fread("data/annotations.csv")
+# Extract supports
+support$test <- support_test$support[1:5]
+support$external <- support_ext$support[1:5]
 
-# Vector of label names
-labels = colnames(annotations)[2:dim(annotations)[2]]
+# Reorder
+support <- support[c(2,1,4,5,3),]
 
-# Format  with full configuration
-data_full = assignments %>%
-  select(-in_balanced) %>%
-  left_join(annotations, by = "image") %>%
-  pivot_longer(names_to = "Label", values_to = "value", cols = labels) %>%
-  group_by(Label, dataset) %>%
-  summarize(sum = sum(value, na.rm = TRUE)) %>%
-  mutate(sum = as.character(sum)) %>%
-  pivot_wider(names_from = "dataset", values_from = "sum") %>%
-  select(Label, Training, Validation, Test, External)
-
-# Get training support with balanced configuration
-data_balanced = assignments %>%
-  filter(in_balanced) %>%
-  select(-in_balanced) %>%
-  left_join(annotations, by = "image") %>%
-  pivot_longer(names_to = "Label", values_to = "value", cols = labels) %>%
-  group_by(Label) %>%
-  summarise(Training_balanced = sum(value))
-
-# Assemble in one table
-table.out = data_full %>%
-  left_join(data_balanced, by = "Label") %>%
-  mutate(Training = paste0(Training, " [", Training_balanced, "]")) %>%
-  select(-Training_balanced) %>%
-  as.data.frame()
-
-# Print for latex table
-tex=paste0(table.out$Label, " & ",
-           table.out$Train, " & ",
-           table.out$Validation, " & ",
-           table.out$Test, " & ",
-           table.out$External, " \\")
-print(data.frame(tex), row.names = FALSE)
-
-
-
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# - Table of support per site and per label ----
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-# read data 
-images = fread("data/images.csv") %>% 
-  select(image, site) %>%
-  mutate(site = str_to_title(gsub("\\_", "\\ ", site)))
-annotations = fread("data/annotations.csv")
-
-# List sites
-sites = gsub("\\..+", "", gsub("\\_", "\\ ", list.files(path = "data/boundaries")))
-n <- length(sites)
-sites <- sites[c(1,4,6,7,2,3,5)]
-
-
-# Format  with full configuration
-data_full = annotations %>%
-  left_join(images, by = "image") %>%
-  pivot_longer(names_to = "label", values_to = "value", cols = labels) %>%
-  group_by(label, site) %>%
-  summarize(n = sum(value)) %>%
-  pivot_wider(names_from = "site", values_from = "n")
-data_full = data_full[, c("label", sites)]
-
-# Print for latex table
-tex=paste0(data_full$label, " & ",
-           data_full$Carpathians, " & ",
-           data_full$`French Alps`, " & ",
-           data_full$`Stubai Valley`, " & ",
-           data_full$Vinschgau, " & ",
-           data_full$Danube, " & ",
-           data_full$Dovre, " & ",
-           data_full$`Sierra Nevada`, " \\")
+# Print in tex format
+tex=paste0(support[,1], " & ",
+           support[,2], " & ",
+           support[,3], " & ",
+           support[,4], " & ",
+           support[,5], " & ",
+           support[,6], " & ",
+           support[,7], " \\")
 print(data.frame(tex), row.names = FALSE)

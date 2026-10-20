@@ -1,0 +1,6 @@
+,train_full,train_balanced,train_control,val
+human,599,541,321,133
+anthropic,969,538,532,214
+vegetation,1651,693,877,361
+rock,947,542,486,209
+snow,553,540,285,122

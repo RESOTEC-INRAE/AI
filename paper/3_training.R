@@ -3,11 +3,13 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 
-# Fetch training data with both full dataset and balanced one
-training_balanced = fread("outputs/best_model_curves_balanced.csv")
+# Fetch training data
 training_full = fread("outputs/best_model_curves_full.csv")
-training = rbind(mutate(training_balanced, dataset = "balanced"), 
-                 mutate(training_full, dataset = "full"))
+training_balanced = fread("outputs/best_model_curves_balanced.csv")
+training_control = fread("outputs/best_model_curves_control.csv")
+training = rbind(mutate(training_full, dataset = "full"),
+                 mutate(training_balanced, dataset = "balanced"), 
+                 mutate(training_control, dataset = "control"))
 
 # Format training data for plotting
 training_formatted = training %>%
@@ -16,7 +18,7 @@ training_formatted = training %>%
                                "train_f1", "val_f1"))) %>%
   separate(col = "metrics", into = c("trainval", "metric"), sep = "_")
 
-# Make the plot
+# Make the plot [Figure S4 - Fig_supp_training]
 plot_training = training_formatted %>%
   mutate(trainval = ifelse(trainval == "train", "Training", "Validation"), 
          metric = ifelse(metric == "f1", "F1-score", "Loss")) %>%

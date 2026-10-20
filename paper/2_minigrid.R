@@ -4,11 +4,20 @@ library(tidyr)
 library(ggplot2)
 library(cowplot)
 
-# Fetch minigrid experiment with both full dataset and balanced one
-minigrid_balanced = fread("outputs/results_minigrid_balanced.csv")
+# Fetch minigrid experiment
 minigrid_full = fread("outputs/results_minigrid_full.csv")
-minigrid = rbind(mutate(minigrid_balanced, dataset = "balanced"), 
-                 mutate(minigrid_full, dataset = "full"))
+minigrid_balanced = fread("outputs/results_minigrid_balanced.csv")
+minigrid_control = fread("outputs/results_minigrid_control.csv")
+minigrid = rbind(mutate(minigrid_full, dataset = "full"),
+                 mutate(minigrid_balanced, dataset = "balanced"),
+                 mutate(minigrid_control, dataset = "control"))
+
+# Check order
+minigridorder <- data.frame(minigrid[minigrid$labels == "weighted avg",])
+minigridorder <- minigridorder[order(minigridorder$f1, decreasing = TRUE),]
+minigridorder[1:10,]
+
+aggregate(minigridorder[,8], list(minigridorder[,2]), mean)
 
 # Format minigrid raw data
 minigrid_formatted = minigrid %>%
@@ -31,7 +40,7 @@ minigrid_formatted = minigrid %>%
             n = n()) %>%
   mutate(lwr = mean - sd, upr = mean + sd)
 
-# Plot 
+# Make the plot [Figure 2 - Fig_main_minigrid]
 plot_minigrid = minigrid_formatted %>%
   # Fix for configuration with no convergence
   rbind(minigrid_formatted %>% filter(backbone == "Vision Transformer" & 
@@ -69,3 +78,5 @@ plot_minigrid = minigrid_formatted %>%
 # Save plot
 ggsave("paper/figures/Fig_main_minigrid.pdf", plot_minigrid, width = 20, 
        height = 12, units = "cm", dpi = 600, bg = "white")
+
+
