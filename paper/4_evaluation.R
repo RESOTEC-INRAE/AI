@@ -41,7 +41,9 @@ plot.seed = results %>%
   select(-support, -rep, -labels) %>%
   pivot_longer(names_to = "metric", values_to = "value", 
                cols = c("recall", "precision", "f1-score")) %>%
-  mutate(metric = factor(metric, levels = c("recall", "precision", "f1-score"))) %>%
+  mutate(metric = stringr::str_to_title(metric), 
+         metric = factor(metric, levels = c("Precision", "Recall", "F1-Score")), 
+         dataset = stringr::str_to_title(dataset)) %>%
   ggplot(aes(x = seed, y = value, fill = dataset)) + 
   geom_boxplot(outliers = FALSE) + 
   facet_wrap( ~ metric, scales = "free", nrow = 1) +
@@ -94,7 +96,12 @@ best_model_values <- results %>%
   semi_join(best_runs, by = c("dataset", "run_id" = "best_run_id")) %>%
   pivot_longer(names_to = "metric", values_to = "best_value",
                cols = c("precision", "recall", "f1-score")) %>%
-  mutate(metric = factor(metric, levels = c("precision", "recall", "f1-score")))
+  mutate(metric = stringr::str_to_title(metric), 
+         metric = factor(metric, levels = c("Precision", "Recall", "F1-Score")), 
+         dataset = stringr::str_to_title(dataset), 
+         labels = factor(labels, levels = c(
+           "vegetation", "snow", "rock", "human", "anthropic", "samples avg", 
+           "weighted avg", "macro avg", "micro avg")))
 
 # 3. Calculate significance between dataset modalities for each label and metric
 significance <- results %>%
@@ -107,14 +114,22 @@ significance <- results %>%
   mutate(p_adjusted = p.adjust(p_value, method = "bonferroni"),
          significance = ifelse(p_adjusted < 0.05, "*", " "),
          y_position = max_value * 1.08) %>%
-  mutate(metric = factor(metric, levels = c("precision", "recall", "f1-score")))
+  mutate(metric = stringr::str_to_title(metric), 
+         metric = factor(metric, levels = c("Precision", "Recall", "F1-Score")), 
+         labels = factor(labels, levels = c(
+           "vegetation", "snow", "rock", "human", "anthropic", "samples avg", 
+           "weighted avg", "macro avg", "micro avg")))
 
 # Prepare main plot data (excluding summary rows if desired)
 plot_data <- results %>%
-  mutate(labels = factor(labels, levels = unique(.$labels))) %>%
+  mutate(labels = factor(labels, levels = c(
+    "vegetation", "snow", "rock", "human", "anthropic", "samples avg", 
+    "weighted avg", "macro avg", "micro avg"))) %>%
   pivot_longer(names_to = "metric", values_to = "value",
                cols = c("precision", "recall", "f1-score")) %>%
-  mutate(metric = factor(metric, levels = c("precision", "recall", "f1-score")))
+  mutate(metric = stringr::str_to_title(metric), 
+         metric = factor(metric, levels = c("Precision", "Recall", "F1-Score")), 
+         dataset = stringr::str_to_title(dataset))
 
 # Plot validation
 plot.validation = ggplot(plot_data, aes(x = labels, y = value, fill = dataset)) + 
@@ -146,14 +161,18 @@ plot.test = classif_testexternal %>%
   filter(metric == "test") %>% select(-metric) %>%
   pivot_longer(names_to = "metric", values_to = "value",
                cols = c("precision", "recall", "f1-score")) %>%
-  mutate(metric = factor(metric, levels = c("precision", "recall", "f1-score")), 
-         labels = factor(labels, levels = unique(.$labels))) %>%
-  ggplot(aes(x = labels, y = value, fill = dataset)) + 
-  geom_bar(stat="identity", color= "lightgray", position=position_dodge()) + 
+  mutate(metric = stringr::str_to_title(metric), 
+         metric = factor(metric, levels = c("Precision", "Recall", "F1-Score")), 
+         labels = factor(labels, levels = c(
+           "vegetation", "snow", "rock", "human", "anthropic", "samples avg", 
+           "weighted avg", "macro avg", "micro avg")), 
+         dataset = stringr::str_to_title(dataset)) %>%
+  ggplot(aes(x = labels, y = value, color = dataset)) + 
+  geom_point(stat="identity", position=position_dodge(0.2)) + 
   facet_wrap(~ metric, nrow = 1) +
-  scale_fill_brewer(palette = "Paired") + 
+  scale_color_brewer(palette = "Paired") + 
   coord_flip() + 
-  ylab("") + xlab("") + ylim(0,1) + 
+  ylab("") + xlab("") + 
   geom_hline(yintercept = 0.8, linetype = "dashed", color = "black") +
   ggtitle("(b) Test with best model") +
   theme(panel.grid = element_line(colour = "grey", linetype = "dotted"), 
@@ -168,14 +187,18 @@ plot.external = classif_testexternal %>%
   filter(metric == "external") %>% select(-metric) %>%
   pivot_longer(names_to = "metric", values_to = "value",
                cols = c("precision", "recall", "f1-score")) %>%
-  mutate(metric = factor(metric, levels = c("precision", "recall", "f1-score")), 
-         labels = factor(labels, levels = unique(.$labels))) %>%
-  ggplot(aes(x = labels, y = value, fill = dataset)) + 
-  geom_bar(stat="identity", color= "lightgray", position=position_dodge()) + 
+  mutate(metric = stringr::str_to_title(metric), 
+         metric = factor(metric, levels = c("Precision", "Recall", "F1-Score")), 
+         labels = factor(labels, levels = c(
+           "vegetation", "snow", "rock", "human", "anthropic", "samples avg", 
+           "weighted avg", "macro avg", "micro avg")), 
+         dataset = stringr::str_to_title(dataset)) %>%
+  ggplot(aes(x = labels, y = value, color = dataset)) + 
+  geom_point(stat="identity", position=position_dodge(0.2)) + 
   facet_wrap(~ metric, nrow = 1) +
-  scale_fill_brewer(palette = "Paired") + 
+  scale_color_brewer(palette = "Paired") + 
   coord_flip() + 
-  ylab("") + xlab("") + ylim(0,1) + 
+  ylab("") + xlab("") + 
   ggtitle("(c) External validation with best model") +
   geom_hline(yintercept = 0.8, linetype = "dashed", color = "black") +
   theme(panel.grid = element_line(colour = "grey", linetype = "dotted"), 
@@ -233,11 +256,15 @@ plot_sites = data_sites %>%
   select(-support) %>%
   pivot_longer(names_to = "metric", values_to = "value",
                cols = c("precision", "recall", "f1-score")) %>%
-  mutate(metric = factor(metric, levels = c("precision", "recall", "f1-score")), 
-         labels = factor(labels, levels = unique(.$labels)), 
-         site = factor(site, levels = sites)) %>%
+  mutate(metric = stringr::str_to_title(metric), 
+         metric = factor(metric, levels = c("Precision", "Recall", "F1-Score")), 
+         labels = factor(labels, levels = c(
+           "vegetation", "snow", "rock", "human", "anthropic", "samples avg", 
+           "weighted avg", "macro avg", "micro avg"))) %>%
   mutate(site_type = ifelse(site %in% sites[5:7], "External sites", 
-                            "Training sites")) %>%
+                            "Training sites"), 
+         site = stringr::str_to_title(gsub("\\_", "\\ ", site)),
+         site = factor(site, levels = stringr::str_to_title(gsub("\\_", "\\ ", sites)))) %>%
   filter(value > 0) %>%
   ggplot(aes(x = labels, y = value, shape = site, color = site_type)) + 
   geom_point() + 
@@ -245,7 +272,7 @@ plot_sites = data_sites %>%
   scale_color_manual(values = c("#C1121F", "#669BBC")) + 
   coord_flip() + 
   facet_wrap(~ metric) +
-  ylim(0,1) +
+  scale_y_continuous(breaks = c(0.2, 0.4, 0.6, 0.8)) +
   geom_hline(yintercept = 0.8, linetype = "dashed") +
   theme(panel.grid = element_line(colour = "grey", linetype = "dotted"), 
         panel.background = element_rect(color = 'black', fill = 'white'), 
@@ -291,6 +318,7 @@ plot_support = data_sites %>%
   filter(labels %in% c("human", "rock", "vegetation", "anthropic", "snow")) %>% 
   ggplot(aes(x = support, y = precision)) + 
   geom_point(fill = "lightblue", color = "black", shape = 21) + 
+  xlab("Support") + ylab("Precision") +
   theme_bw()
 
 # Save plot

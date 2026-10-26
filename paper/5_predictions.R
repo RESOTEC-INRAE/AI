@@ -145,10 +145,10 @@ for(i in 1:length(sites)){
               legend.key = element_blank()) + 
         geom_text(data = data.frame(observed = 0.08*max.val.ij,
                                     predicted = 0.95*max.val.ij, category = NA),
-                  label = paste0("R2 = ", round(rsquare, digits = 2),
+                  label = paste0("R\u00b2 = ", round(rsquare, digits = 2),
                                  "\nPGP = ", round(pgp, digits = 2)),
                   size = 5, color = "black", hjust = 0, vjust = 0.9) +
-        ggtitle(gsub("\\_", "\\ ", site.in))
+        ggtitle(stringr::str_to_title(gsub("\\_", "\\ ", site.in)))
       
       # - Save to list
       plotlist.out[[i]] = plot.in + theme(legend.position = "none")
@@ -166,6 +166,7 @@ for(i in 1:length(sites)){
           colnames(.)[2:(dim(.)[2]-1)])) %>%
         mutate(Interactions = ifelse(is.na(value), 0, value)) %>%
         separate(col = "cat_predict", into = c("category", "prediction"), sep = "_") %>%
+        mutate(prediction = stringr::str_to_title(prediction)) %>%
         ggplot(aes(geometry = geom, fill = Interactions)) + 
         geom_sf(color = "lightgrey") + 
         facet_grid(prediction ~ category) + 
@@ -179,7 +180,7 @@ for(i in 1:length(sites)){
               legend.title = element_text(size = 15),
               axis.text = element_blank(), 
               axis.ticks = element_blank()) + 
-        ggtitle(gsub("\\_", "\\ ", site.in))
+        ggtitle(stringr::str_to_title(gsub("\\_", "\\ ", site.in)))
       # - Store in list
       maplist.out[[i]] = map.in
       
@@ -220,8 +221,10 @@ plot.stat.grid = table.stat.grid %>%
   mutate(grid = as.numeric(gsub("grid", "", grid))) %>%
   pivot_longer(names_to = "metric", values_to = "value", 
                cols = all_of(c("rsquare", "pgp"))) %>%
-  mutate(metric = toupper(metric)) %>%
-  ggplot(aes(x = grid, y = value, color = site)) + 
+  mutate(metric = ifelse(metric == "pgp", "PGP", "R\u00b2"), 
+         metric = factor(metric, levels = c("R\u00b2", "PGP")), 
+         Site = stringr::str_to_title(gsub("\\_", "\\ ", site))) %>%
+  ggplot(aes(x = grid, y = value, color = Site)) + 
   geom_line() + 
   geom_point() +
   facet_wrap(~ metric, scale = "free") + 

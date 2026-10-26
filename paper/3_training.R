@@ -21,7 +21,10 @@ training_formatted = training %>%
 # Make the plot [Figure S4 - Fig_supp_training]
 plot_training = training_formatted %>%
   mutate(trainval = ifelse(trainval == "train", "Training", "Validation"), 
-         metric = ifelse(metric == "f1", "F1-score", "Loss")) %>%
+         metric = ifelse(metric == "f1", "F1-score", "Loss"),
+         dataset = stringr::str_to_title(dataset), 
+         dataset = factor(dataset, levels = c(
+           "Full", "Balanced", "Control"))) %>%
   ggplot(aes(x = epoch, y = value, color = trainval, shape = trainval)) + 
   geom_point() + 
   geom_line() + 

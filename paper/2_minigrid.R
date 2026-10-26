@@ -26,6 +26,7 @@ minigrid_formatted = minigrid %>%
   mutate(batch_size = paste0("BS = ", batch_size), 
          learning_rate = paste0("LR = ", learning_rate), 
          lr_bs = paste0(batch_size, "\n", learning_rate), 
+         lr_bs2 = paste0("atop(", batch_size, ", ", gsub("1e", "10\\^", learning_rate), ")"),
          backbone = case_when(
            backbone == "hf_swt_t" ~ "Swin Transformer", 
            backbone == "hf_resnet" ~ "ResNet", 
@@ -34,7 +35,7 @@ minigrid_formatted = minigrid %>%
          )) %>%
   pivot_longer(names_to = "metric", values_to = "value", 
                cols = c("precision", "recall", "f1-score")) %>%
-  group_by(backbone, batch_size, learning_rate, lr_bs, dataset, metric) %>%
+  group_by(backbone, batch_size, learning_rate, lr_bs, lr_bs2, dataset, metric) %>%
   summarize(mean = mean(value, na.rm = TRUE), 
             sd = sd(value, na.rm = TRUE), 
             n = n()) %>%
@@ -46,24 +47,31 @@ plot_minigrid = minigrid_formatted %>%
   rbind(minigrid_formatted %>% filter(backbone == "Vision Transformer" & 
                                         lr_bs == "BS = 16\nLR = 1e-04" &
                                         dataset == "full") %>% 
-          mutate(lr_bs = "BS = 16\nLR = 1e-05",
+          mutate(lr_bs = "BS = 16\nLR = 1e-05", lr_bs2 = "atop(BS = 16, LR = 10^-05)",
                  mean = NA, sd = NA, lwr = NA, upr = NA)) %>%
-  mutate(metric = factor(metric, levels = c("recall", "precision", "f1-score"))) %>% 
-  ggplot(aes(x = backbone, y = mean, fill = dataset))+
-  geom_bar(stat="identity", color= "lightgray", position=position_dodge())+ 
+  mutate(metric = stringr::str_to_title(metric), 
+         metric = factor(metric, levels = c("Precision", "Recall", "F1-Score"))) %>% 
+  mutate(lr_bs2 = gsub("\\=", "\\=\\=", lr_bs2), 
+         lr_bs2 = gsub("BS", "\\'BS\\'", lr_bs2), 
+         lr_bs2 = gsub("LR", "\\'LR\\'", lr_bs2)) %>%
+  mutate(dataset = stringr::str_to_title(dataset)) %>%
+  ggplot(aes(x = backbone, y = mean, color = dataset))+
+  geom_point(stat="identity", position=position_dodge(0.4))+ 
   geom_errorbar(aes(ymin = lwr, ymax = upr), 
-                position = position_dodge(.9), width = 0.2) + 
-  facet_grid(lr_bs ~ metric) + 
+                position = position_dodge(.4), width = 0.2) + 
+  facet_grid(lr_bs2 ~ metric, labeller = label_parsed) + 
   geom_hline(data = merge(minigrid_formatted %>%
                             group_by(metric, dataset) %>%
                             summarize(maxi = max(mean)) %>%
-                            mutate(metric = factor(metric, levels = c(
-                              "recall", "precision", "f1-score"))), 
+                            mutate(metric = stringr::str_to_title(metric), 
+                                   metric = factor(metric, levels = c(
+                                     "Precision", "Recall", "F1-Score")), 
+                                   dataset = stringr::str_to_title(dataset)), 
                           data.frame(lr_bs = unique(minigrid_formatted$lr_bs))), 
              aes(yintercept = maxi, color = dataset), 
              linetype = "dashed") + 
   coord_flip() + 
-  scale_fill_brewer(palette="Paired") + 
+  #scale_fill_brewer(palette="Paired") + 
   scale_color_brewer(palette="Paired") + 
   xlab("") + ylab("") +
   theme(panel.grid = element_line(colour = "grey", linetype = "dotted"), 
