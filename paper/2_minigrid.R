@@ -54,7 +54,8 @@ plot_minigrid = minigrid_formatted %>%
   mutate(lr_bs2 = gsub("\\=", "\\=\\=", lr_bs2), 
          lr_bs2 = gsub("BS", "\\'BS\\'", lr_bs2), 
          lr_bs2 = gsub("LR", "\\'LR\\'", lr_bs2)) %>%
-  mutate(dataset = stringr::str_to_title(dataset)) %>%
+  mutate(dataset = factor(stringr::str_to_title(dataset), levels = c(
+    "Full", "Balanced", "Control"))) %>%
   ggplot(aes(x = backbone, y = mean, color = dataset))+
   geom_point(stat="identity", position=position_dodge(0.4))+ 
   geom_errorbar(aes(ymin = lwr, ymax = upr), 
@@ -71,8 +72,8 @@ plot_minigrid = minigrid_formatted %>%
              aes(yintercept = maxi, color = dataset), 
              linetype = "dashed") + 
   coord_flip() + 
-  #scale_fill_brewer(palette="Paired") + 
-  scale_color_brewer(palette="Paired") + 
+  scale_color_manual(values = c(`Full` = "#99D98C", `Balanced` = "#52B69A", 
+                                `Control` = "#1E6091")) +
   xlab("") + ylab("") +
   theme(panel.grid = element_line(colour = "grey", linetype = "dotted"), 
         panel.background = element_rect(color = 'black', fill = 'white'), 

@@ -43,11 +43,13 @@ plot.seed = results %>%
                cols = c("recall", "precision", "f1-score")) %>%
   mutate(metric = stringr::str_to_title(metric), 
          metric = factor(metric, levels = c("Precision", "Recall", "F1-Score")), 
-         dataset = stringr::str_to_title(dataset)) %>%
+         dataset = factor(stringr::str_to_title(dataset), levels = c(
+           "Full", "Balanced", "Control"))) %>%
   ggplot(aes(x = seed, y = value, fill = dataset)) + 
   geom_boxplot(outliers = FALSE) + 
   facet_wrap( ~ metric, scales = "free", nrow = 1) +
-  scale_fill_brewer(palette = "Paired") + 
+  scale_fill_manual(values = c(`Full` = "#99D98C", `Balanced` = "#52B69A", 
+                               `Control` = "#1E6091")) +
   ylab("") + xlab("Random seed") +
   theme(panel.grid = element_line(colour = "grey", linetype = "dotted"), 
         panel.background = element_rect(color = 'black', fill = 'white'), 
@@ -98,7 +100,8 @@ best_model_values <- results %>%
                cols = c("precision", "recall", "f1-score")) %>%
   mutate(metric = stringr::str_to_title(metric), 
          metric = factor(metric, levels = c("Precision", "Recall", "F1-Score")), 
-         dataset = stringr::str_to_title(dataset), 
+         dataset = factor(stringr::str_to_title(dataset), levels = c(
+           "Full", "Balanced", "Control")), 
          labels = factor(labels, levels = c(
            "vegetation", "snow", "rock", "human", "anthropic", "samples avg", 
            "weighted avg", "macro avg", "micro avg")))
@@ -108,17 +111,47 @@ significance <- results %>%
   pivot_longer(names_to = "metric", values_to = "value",
                cols = c("precision", "recall", "f1-score")) %>%
   group_by(labels, metric) %>%
-  summarise(p_value = t.test(value[dataset == unique(dataset)[1]], 
-                             value[dataset == unique(dataset)[2]])$p.value,
+  summarise(full_balanced = t.test(value[dataset == "full"], 
+                                   value[dataset == "balanced"])$p.value,
+            full_control = t.test(value[dataset == "full"], 
+                                   value[dataset == "control"])$p.value,
+            balanced_control = t.test(value[dataset == "full"], 
+                                  value[dataset == "balanced"])$p.value,
             max_value = max(value, na.rm = TRUE), .groups = 'drop') %>%
-  mutate(p_adjusted = p.adjust(p_value, method = "bonferroni"),
-         significance = ifelse(p_adjusted < 0.05, "*", " "),
-         y_position = max_value * 1.08) %>%
-  mutate(metric = stringr::str_to_title(metric), 
+  pivot_longer(names_to = "comp", values_to = "p_value",
+               cols = c("full_balanced", "full_control", "balanced_control")) %>%
+  mutate(comp = gsub("\\_", "\\ vs\\ \\.", comp), 
+         p_adjusted = p.adjust(p_value, method = "bonferroni"), 
+         metric = stringr::str_to_title(metric), 
          metric = factor(metric, levels = c("Precision", "Recall", "F1-Score")), 
          labels = factor(labels, levels = c(
            "vegetation", "snow", "rock", "human", "anthropic", "samples avg", 
-           "weighted avg", "macro avg", "micro avg")))
+           "weighted avg", "macro avg", "micro avg"))) 
+
+# Extract pvalues in a table
+# - Make table
+table_signif = significance %>%
+  arrange(metric, desc(labels)) %>%
+  mutate(metric = as.character(metric), labels = as.character(labels)) %>%
+  mutate(pvalue = scales::pvalue(p_adjusted, accuracy = 0.001, add_p = FALSE)) %>%
+  select(metric, labels, comp, pvalue) %>%
+  pivot_wider(names_from = comp, values_from = pvalue)
+# - Print to put in latex table
+for(i in 1:dim(table_signif)[1]){
+  print(paste0(paste(table_signif[i, ], collapse = " & "), "\\"))
+}
+
+
+
+# Finish formatting significance  
+significance = significance %>%
+  group_by(labels, metric, max_value) %>%
+  summarize(pmin = min(p_adjusted)) %>% 
+  ungroup() %>%
+  mutate(significance = ifelse(pmin < 0.05, "*", " "),
+         y_position = max_value * 1.08)
+
+
 
 # Prepare main plot data (excluding summary rows if desired)
 plot_data <- results %>%
@@ -129,7 +162,8 @@ plot_data <- results %>%
                cols = c("precision", "recall", "f1-score")) %>%
   mutate(metric = stringr::str_to_title(metric), 
          metric = factor(metric, levels = c("Precision", "Recall", "F1-Score")), 
-         dataset = stringr::str_to_title(dataset))
+         dataset = factor(stringr::str_to_title(dataset), levels = c(
+           "Full", "Balanced", "Control")))
 
 # Plot validation
 plot.validation = ggplot(plot_data, aes(x = labels, y = value, fill = dataset)) + 
@@ -141,7 +175,8 @@ plot.validation = ggplot(plot_data, aes(x = labels, y = value, fill = dataset)) 
             aes(x = labels, y = y_position, label = significance),
             size = 6, vjust = 0.9, inherit.aes = FALSE) +
   facet_wrap(~ metric, nrow = 1) +
-  scale_fill_brewer(palette = "Paired") + 
+  scale_fill_manual(values = c(`Full` = "#99D98C", `Balanced` = "#52B69A", 
+                                `Control` = "#1E6091")) +
   coord_flip() + 
   ylab("") + xlab("") +
   ggtitle("(a) Validation across 50 runs") + 
@@ -166,11 +201,13 @@ plot.test = classif_testexternal %>%
          labels = factor(labels, levels = c(
            "vegetation", "snow", "rock", "human", "anthropic", "samples avg", 
            "weighted avg", "macro avg", "micro avg")), 
-         dataset = stringr::str_to_title(dataset)) %>%
+         dataset = factor(stringr::str_to_title(dataset), levels = c(
+           "Full", "Balanced", "Control"))) %>%
   ggplot(aes(x = labels, y = value, color = dataset)) + 
   geom_point(stat="identity", position=position_dodge(0.2)) + 
   facet_wrap(~ metric, nrow = 1) +
-  scale_color_brewer(palette = "Paired") + 
+  scale_color_manual(values = c(`Full` = "#99D98C", `Balanced` = "#52B69A", 
+                                `Control` = "#1E6091")) +
   coord_flip() + 
   ylab("") + xlab("") + 
   geom_hline(yintercept = 0.8, linetype = "dashed", color = "black") +
@@ -192,11 +229,13 @@ plot.external = classif_testexternal %>%
          labels = factor(labels, levels = c(
            "vegetation", "snow", "rock", "human", "anthropic", "samples avg", 
            "weighted avg", "macro avg", "micro avg")), 
-         dataset = stringr::str_to_title(dataset)) %>%
+         dataset = factor(stringr::str_to_title(dataset), levels = c(
+           "Full", "Balanced", "Control"))) %>%
   ggplot(aes(x = labels, y = value, color = dataset)) + 
   geom_point(stat="identity", position=position_dodge(0.2)) + 
   facet_wrap(~ metric, nrow = 1) +
-  scale_color_brewer(palette = "Paired") + 
+  scale_color_manual(values = c(`Full` = "#99D98C", `Balanced` = "#52B69A", 
+                                `Control` = "#1E6091")) +
   coord_flip() + 
   ylab("") + xlab("") + 
   ggtitle("(c) External validation with best model") +
